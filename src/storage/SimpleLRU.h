@@ -9,7 +9,6 @@
 #include </home/eles/Public/afina/include/afina/Storage.h>
 namespace Afina {
 namespace Backend {
-
 /**
  * # Map based implementation
  * That is NOT thread safe implementaiton!!
@@ -19,17 +18,13 @@ public:
     SimpleLRU(size_t max_size = 1024) : _max_size(max_size), _cursize(0)
     {
       _lru_head = nullptr;
-      _lru_tail = (nullptr);
+      _lru_tail = nullptr;
     }
 
     ~SimpleLRU()
     {
-       if (_lru_tail == nullptr)
-         return;
-       _lru_index.clear();
-       while(_lru_tail.get() != _lru_head)
-         remove(*_lru_tail);
-        _lru_head = nullptr;
+      while ((_lru_tail != _lru_head.get()) &&  (_lru_head != nullptr))
+        remove(*_lru_tail);
     }
 
     // Implements Afina::Storage interface
@@ -52,8 +47,9 @@ private:
     using lru_node = struct lru_node {
         std::string key;
         std::string value;
-        std::unique_ptr<lru_node> prev;
-        lru_node* next;
+        lru_node* prev;
+        std::unique_ptr<lru_node> next;
+        lru_node(const std::string &ckey, const std::string &cvalue) : key(ckey), value(cvalue), prev(nullptr), next(nullptr) {}
     };
 
     // Maximum number of bytes could be stored in this cache.
@@ -64,13 +60,15 @@ private:
     // element that wasn't used for longest time.
     //
     // List owns all nodes
-    lru_node* _lru_head;
-    std::unique_ptr<lru_node> _lru_tail;
+    std::unique_ptr<lru_node> _lru_head;
+    lru_node* _lru_tail;
     bool to_tail(lru_node& node, bool exists);
     bool remove(lru_node& node);
     bool push(const std::string &key,const std::string &value);
     // Index of nodes from list above, allows fast random access to elements by lru_node#key
-    std::map<std::string, std::reference_wrapper<lru_node>, std::less<std::string>> _lru_index;
+
+    using lrumap = std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, std::less<std::string>>;
+    lrumap  _lru_index;
 };
 
 } // namespace Backend
