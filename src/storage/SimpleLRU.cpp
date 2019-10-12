@@ -35,7 +35,6 @@ bool SimpleLRU::Set(const std::string &key, const std::string &value)
     return false;
   if (_cursize - value.size() + it->second.get().value.size() > _max_size)
     return false;
-  _cursize-=value.size() - it->second.get().value.size();
   if (!Delete(key))
     return false;
   return Put(key, value);
@@ -100,17 +99,17 @@ bool SimpleLRU::push(const std::string &key, const std::string &value)
       if (!Delete(_lru_head->key))
         return false;
   _cursize+= key.size() + value.size();
-  auto new_node = std::make_unique<lru_node>(key, value);
+  auto new_node = new lru_node (key, value);
   if (_lru_tail != nullptr)
   {
     new_node->prev = _lru_tail;
-    _lru_tail->next.swap(new_node);
+    _lru_tail->next.reset(new_node);
     _lru_tail = _lru_tail->next.get();
     }
     else
     {
-        _lru_tail = new_node.get();
-        _lru_head.swap(new_node);
+        _lru_tail = new_node;
+        _lru_head.reset(new_node);
     }
     _lru_index.insert(std::make_pair(std::reference_wrapper<std::string>(_lru_tail->key), std::reference_wrapper<lru_node> (*_lru_tail)));
     return true;
