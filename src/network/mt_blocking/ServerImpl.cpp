@@ -135,7 +135,7 @@ void ServerImpl::OnRun() {
         // Configure read timeout
         {
             struct timeval tv;
-            tv.tv_sec = 5; // TODO: make it configurable
+            tv.tv_sec = 5; // TODO: make it configurable ???
             tv.tv_usec = 0;
             setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
         }
@@ -153,7 +153,7 @@ void ServerImpl::OnRun() {
               }
               else
               {
-                  stmap.emplace(client_socket, std::thread(&ServerImpl::Handler, client_socket));
+                  stmap.emplace(client_socket, std::thread(&ServerImpl::Handler, this, client_socket));
               }
         }
         catch (std::runtime_error &ex)
@@ -257,6 +257,9 @@ void ServerImpl::Handler(int client_socket)
   command_to_execute.reset();
   argument_for_command.resize(0);
   parser.Reset();
+  std::lock_guard<std::mutex> lock(mutex);
+  cv.notify_one();
+  stmap.erase(client_socket);
 }
 
 
