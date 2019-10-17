@@ -6,7 +6,7 @@
 #include <mutex>
 #include <string>
 #include <iostream>
-#include </home/eles/Public/afina/include/afina/Storage.h>
+#include <afina/Storage.h>
 namespace Afina {
 namespace Backend {
 /**
@@ -22,10 +22,8 @@ public:
     }
 
     ~SimpleLRU()
-    {
       while ((_lru_tail != _lru_head.get()) &&  (_lru_head != nullptr))
         remove(*_lru_tail);
-    }
 
     // Implements Afina::Storage interface
     bool Put(const std::string &key, const std::string &value) override;
@@ -45,7 +43,7 @@ public:
 private:
     // LRU cache node
     using lru_node = struct lru_node {
-        std::string key;
+        const std::string key;
         std::string value;
         lru_node* prev;
         std::unique_ptr<lru_node> next;
@@ -62,7 +60,7 @@ private:
     // List owns all nodes
     std::unique_ptr<lru_node> _lru_head;
     lru_node* _lru_tail;
-    bool to_tail(lru_node& node, bool exists);
+    bool to_tail(lru_node& node);
     bool remove(lru_node& node);
     bool push(const std::string &key,const std::string &value);
     // Index of nodes from list above, allows fast random access to elements by lru_node#key
