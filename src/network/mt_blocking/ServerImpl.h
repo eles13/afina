@@ -51,7 +51,7 @@ private:
 
     // Server socket to accept connections on
     int _server_socket;
-    mutable std::mutex mutex;
+    std::mutex mutex;
     std::map <int, std::thread> stmap;
     std::condition_variable cv;
     // Thread to run network on

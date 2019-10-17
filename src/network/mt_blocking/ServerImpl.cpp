@@ -93,7 +93,7 @@ void ServerImpl::Join() {
       cv.wait(lock);
   }
     assert(_thread.joinable());
-    _thread.join();
+    _thread.join();///?? misunderstanding
     close(_server_socket);
 }
 
@@ -258,7 +258,7 @@ void ServerImpl::Handler(int client_socket)
   argument_for_command.resize(0);
   parser.Reset();
   std::lock_guard<std::mutex> lock(mutex);
-  cv.notify_one();
+  cv.notify_all();
   stmap.erase(client_socket);
 }
 
