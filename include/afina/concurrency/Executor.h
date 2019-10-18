@@ -15,6 +15,8 @@ namespace Concurrency {
 /**
  * # Thread pool
  */
+class Executor;
+void perform(Executor* execute);
 class Executor {
     enum class State {
         // Threadpool is fully operational, tasks could be added and get executed
@@ -28,7 +30,7 @@ class Executor {
         kStopped
     };
 
-    Executor(std::string name, int size);
+    Executor(std::string name, int size, size_t low, size_t hight, size_t max, size_t time) : low_watermark(low), hight_watermark(hight), max_queue_size(max), idle_time(time) {} ;
     ~Executor();
 
     /**
@@ -38,7 +40,7 @@ class Executor {
      * In case if await flag is true, call won't return until all background jobs are done and all threads are stopped
      */
     void Stop(bool await = false);
-
+    void Start();
     /**
      * Add function to be executed on the threadpool. Method returns true in case if task has been placed
      * onto execution queue, i.e scheduled for execution and false otherwise.
@@ -51,12 +53,16 @@ class Executor {
         auto exec = std::bind(std::forward<F>(func), std::forward<Types>(args)...);
 
         std::unique_lock<std::mutex> lock(this->mutex);
-        if (state != State::kRun) {
+        if (state != State::kRun || tasks.size() >= max_queue_size) {
             return false;
         }
 
         // Enqueue new task
         tasks.push_back(exec);
+        if ((freeth == 0) && (threads.size() < hight_watermark))
+        {
+           threads.push_back(std::thread(&perform, this));
+        }
         empty_condition.notify_one();
         return true;
     }
@@ -97,8 +103,16 @@ private:
      * Flag to stop bg threads
      */
     State state;
+    size_t low_watermark;
+    size_t hight_watermark;
+    size_t max_queue_size;
+    size_t idle_time;
+    size_t working;
+    size_t freeth;
+    void deleteth();
+    std::condition_variable stop;
 };
-
+//void perform(Executor* ex);
 } // namespace Concurrency
 } // namespace Afina
 
