@@ -28,7 +28,7 @@ namespace Network {
 namespace MTblocking {
 
 // See Server.h
-ServerImpl::ServerImpl(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Logging::Service> pl) : Server(ps, pl) {}
+ServerImpl::ServerImpl(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Logging::Service> pl) : Server(ps, pl), executor("", 10, 1, 10, 10, 10) {}
 
 // See Server.h
 ServerImpl::~ServerImpl() {}
@@ -37,7 +37,7 @@ ServerImpl::~ServerImpl() {}
 void ServerImpl::Start(uint16_t port, uint32_t n_accept, uint32_t n_workers) {
     _logger = pLogging->select("network");
     _logger->info("Start mt_blocking network service");
-
+    executor.Start();
     sigset_t sig_mask;
     sigemptyset(&sig_mask);
     sigaddset(&sig_mask, SIGPIPE);
@@ -87,13 +87,14 @@ void ServerImpl::Stop() {
 
 // See Server.h
 void ServerImpl::Join() {
-  {
-    std::unique_lock<std::mutex> lock(mutex);
-    while(!stmap.empty())
-      cv.wait(lock);
-  }
+  // {
+  //   std::unique_lock<std::mutex> lock(mutex);
+  //   while(!stmap.empty())
+  //     cv.wait(lock);
+  // }
     assert(_thread.joinable());
     _thread.join();///?? misunderstanding
+    executor.Stop(true);
     close(_server_socket);
 }
 
@@ -141,25 +142,28 @@ void ServerImpl::OnRun() {
         }
 
         // TODO: Start new thread and process data from/to connection
-        try
-        {
-              std::lock_guard<std::mutex> lock(mutex);
-              if (stmap.size() >= _max_threads)
-              {
-                  static const std::string msg = "The limit exceeded";
-                  close(client_socket);
-                  if (send(client_socket, msg.data(), msg.size(), 0) == -1)
-                      throw std::runtime_error("Failed to send response");
-              }
-              else
-              {
-                  stmap.emplace(client_socket, std::thread(&ServerImpl::Handler, this, client_socket));
-              }
-        }
-        catch (std::runtime_error &ex)
-        {
-          _logger->error("Failed to process connection on descriptor {}: {}", client_socket, ex.what());
-        }
+        // try
+        // {
+        //       std::lock_guard<std::mutex> lock(mutex);
+        //       if (stmap.size() >= _max_threads)
+        //       {
+        //           static const std::string msg = "The limit exceeded";
+        //           close(client_socket);
+        //           if (send(client_socket, msg.data(), msg.size(), 0) == -1)
+        //               throw std::runtime_error("Failed to send response");
+        //       }
+        //       else
+        //       {
+        //           stmap.emplace(client_socket, std::thread(&ServerImpl::Handler, this, client_socket));
+        //       }
+        // }
+        // catch (std::runtime_error &ex)
+        // {
+        //   _logger->error("Failed to process connection on descriptor {}: {}", client_socket, ex.what());
+        // }
+        // уже не нужно же?
+        if (!executor.Execute(&ServerImpl::Handler, this, client_socket))
+          close(client_socket);
       }
 
 

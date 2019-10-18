@@ -7,6 +7,7 @@
 #include <condition_variable>
 #include <map>
 #include <afina/network/Server.h>
+#include <afina/concurrency/Executor.h>
 
 namespace spdlog {
 class logger;
@@ -58,6 +59,7 @@ private:
     std::thread _thread;
     int _max_threads = 10;
     void Handler(int client_socket);
+    Afina::Concurrency::Executor executor;
 };
 
 } // namespace MTblocking
