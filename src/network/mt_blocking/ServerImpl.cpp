@@ -93,8 +93,7 @@ void ServerImpl::Join() {
       cv.wait(lock);
   }
     assert(_thread.joinable());
-    _thread.join();///?? misunderstanding
-    close(_server_socket);
+    _thread.join();
 }
 
 // See Server.h
@@ -162,7 +161,7 @@ void ServerImpl::OnRun() {
         }
       }
 
-
+    close(_server_socket);
     // Cleanup on exit...
     _logger->warn("Network stopped");
 }
@@ -258,8 +257,10 @@ void ServerImpl::Handler(int client_socket)
   argument_for_command.resize(0);
   parser.Reset();
   std::lock_guard<std::mutex> lock(mutex);
-  cv.notify_all();
   stmap.erase(client_socket);
+  if (stmap.empty()){
+        cv.notify_all();
+  }
 }
 
 
