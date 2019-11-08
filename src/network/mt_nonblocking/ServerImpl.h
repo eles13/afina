@@ -3,7 +3,8 @@
 
 #include <thread>
 #include <vector>
-
+#include "Connection.h"
+#include <set>
 #include <afina/network/Server.h>
 
 namespace spdlog {
@@ -37,7 +38,7 @@ public:
 
 protected:
     void OnRun();
-    void OnNewConnection();
+    void OnNewConnection(int acceptor_epoll);
 
 private:
     // logger to use
@@ -63,6 +64,8 @@ private:
 
     // threads serving read/write requests
     std::vector<Worker> _workers;
+    std::set<Connection *> cons;
+    std::mutex mutex;
 };
 
 } // namespace MTnonblock
