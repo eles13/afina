@@ -21,9 +21,10 @@ public:
       _lru_tail = nullptr;
     }
 
-    ~SimpleLRU()
+    ~SimpleLRU(){
       while ((_lru_tail != _lru_head.get()) &&  (_lru_head != nullptr))
         remove(*_lru_tail);
+    }
 
     // Implements Afina::Storage interface
     bool Put(const std::string &key, const std::string &value) override;
