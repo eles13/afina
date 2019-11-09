@@ -9,11 +9,12 @@ bool SimpleLRU::Put(const std::string &key, const std::string &value) {
         return false;
     auto it = _lru_index.find(key);
     if (it != _lru_index.end()) {
-        it->second.get().value = value;
-        while (_cursize + key.size() + value.size() > _max_size)
-            if (!Delete(_lru_head->key))
+        while (_cursize + value.size() - it->second.get().value.size() > _max_size)
+            if (!remove(it))
                 return false;
-        _cursize += key.size() + value.size();
+        _cursize -= it->second.get().value.size();
+        it->second.get().value = value;
+        _cursize +=value.size();
         return to_tail(it->second.get());
     }
     return push(key, value);
@@ -35,11 +36,12 @@ bool SimpleLRU::Set(const std::string &key, const std::string &value) {
     auto it = _lru_index.find((key));
     if (it == _lru_index.end())
         return false;
-    it->second.get().value = value;
-    while (_cursize + key.size() + value.size() > _max_size)
-        if (!Delete(_lru_head->key))
+    while (_cursize + value.size() - it->second.get().value.size() > _max_size)
+        if (!remove(it))
             return false;
-    _cursize += key.size() + value.size();
+    _cursize -= it->second.get().value.size();
+    it->second.get().value = value;
+    _cursize +=value.size();
     return to_tail(it->second.get());
 }
 
@@ -48,7 +50,7 @@ bool SimpleLRU::Delete(const std::string &key) {
     auto it = _lru_index.find(key);
     if (it == _lru_index.end())
         return false;
-    return remove(it->second.get());
+    return remove(it);
 }
 
 // See MapBasedGlobalLockImpl.h
@@ -60,7 +62,8 @@ bool SimpleLRU::Get(const std::string &key, std::string &value) {
     return to_tail(it->second.get());
 }
 
-bool SimpleLRU::remove(lru_node &node) {
+bool SimpleLRU::remove(const lrumap::iterator it) {
+    lru_node node(it->first, it->second.get().value);
     _cursize -= node.key.size() + node.value.size();
     _lru_index.erase(node.key);
     std::unique_ptr<lru_node> tmp = nullptr;
@@ -87,8 +90,11 @@ bool SimpleLRU::remove(lru_node &node) {
 
 bool SimpleLRU::push(const std::string &key, const std::string &value) {
     while (_cursize + key.size() + value.size() > _max_size)
-        if (!Delete(_lru_head->key))
+    {
+        auto it = _lru_index.find(_lru_head.get()->key);
+        if (!remove(it))
             return false;
+    }
     _cursize += key.size() + value.size();
     auto new_node = new lru_node(key, value);
     if (_lru_tail != nullptr) {
