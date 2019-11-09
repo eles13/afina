@@ -143,7 +143,7 @@ void ServerImpl::OnRun() {
         try
         {
               std::lock_guard<std::mutex> lock(mutex);
-              if (stmap.size() >= _max_threads)
+              if ((stmap.size() >= _max_threads) || (!(running.load())))
               {
                   static const std::string msg = "The limit exceeded";
                   close(client_socket);
@@ -258,7 +258,7 @@ void ServerImpl::Handler(int client_socket)
   parser.Reset();
   std::lock_guard<std::mutex> lock(mutex);
   stmap.erase(client_socket);
-  if (stmap.empty()){
+  if ((stmap.empty()) && (!(running.load())){
         cv.notify_all();
   }
 }
