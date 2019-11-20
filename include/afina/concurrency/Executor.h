@@ -8,6 +8,7 @@
 #include <queue>
 #include <string>
 #include <thread>
+#include <unordered_map>
 
 namespace Afina {
 namespace Concurrency {
@@ -16,7 +17,7 @@ namespace Concurrency {
  * # Thread pool
  */
 class Executor;
-void perform(Executor* execute);
+void perform(Executor *execute);
 class Executor {
     enum class State {
         // Threadpool is fully operational, tasks could be added and get executed
@@ -30,7 +31,9 @@ class Executor {
         kStopped
     };
 
-    Executor(std::string name, int size, size_t low, size_t hight, size_t max, size_t time) : low_watermark(low), hight_watermark(hight), max_queue_size(max), idle_time(time) {} ;
+public:
+    Executor(std::string name, int size, size_t low, size_t hight, size_t max, size_t time)
+        : low_watermark(low), hight_watermark(hight), max_queue_size(max), idle_time(time){};
     ~Executor();
 
     /**
@@ -59,9 +62,9 @@ class Executor {
 
         // Enqueue new task
         tasks.push_back(exec);
-        if ((freeth == 0) && (threads.size() < hight_watermark))
-        {
-           threads.push_back(std::thread(&perform, this));
+        if ((freeth == 0) && (threads.size() < hight_watermark)) {
+          std::thread t(&(perform), this);
+          threads.insert(std::move(std::make_pair(t.get_id(), std::move(t))));
         }
         empty_condition.notify_one();
         return true;
@@ -92,7 +95,7 @@ private:
     /**
      * Vector of actual threads that perorm execution
      */
-    std::vector<std::thread> threads;
+    std::unordered_map<std::thread::id,std::thread> threads;
 
     /**
      * Task queue
@@ -109,10 +112,10 @@ private:
     size_t idle_time;
     size_t working;
     size_t freeth;
-    void deleteth();
+    void deleteth(const std::unordered_map<std::thread::id,std::thread>::iterator it);
     std::condition_variable stop;
 };
-//void perform(Executor* ex);
+// void perform(Executor* ex);
 } // namespace Concurrency
 } // namespace Afina
 
