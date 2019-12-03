@@ -15,14 +15,18 @@ namespace Backend {
  */
 class SimpleLRU : public Afina::Storage {
 public:
-    SimpleLRU(size_t max_size = 1024) : _max_size(max_size), _cursize(0) {
-        _lru_head = nullptr;
-        _lru_tail = nullptr;
-    }
+    SimpleLRU(size_t max_size = 1024) : _max_size(max_size), _cursize(0), _lru_head(nullptr), _lru_tail(nullptr) {}
 
     ~SimpleLRU() {
-        while ((_lru_tail != _lru_head.get()) && (_lru_head != nullptr))
-            remove(_lru_index.begin());
+        if (_lru_head) {
+            _lru_index.clear();
+            while (_lru_head->next != nullptr) {
+                std::unique_ptr<lru_node> todelete;
+                todelete.swap(_lru_head);
+                _lru_head.swap(todelete->next);
+            }
+            _lru_head.reset();
+        }
     }
 
     // Implements Afina::Storage interface
@@ -69,6 +73,7 @@ private:
         std::map<std::reference_wrapper<const std::string>, std::reference_wrapper<lru_node>, std::less<std::string>>;
     lrumap _lru_index;
     bool remove(const lrumap::iterator it);
+    bool fit(const lrumap::iterator& it, const std::string value);
 };
 
 } // namespace Backend
