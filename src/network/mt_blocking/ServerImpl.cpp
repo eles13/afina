@@ -87,13 +87,13 @@ void ServerImpl::Stop() {
 
 // See Server.h
 void ServerImpl::Join() {
+  assert(_thread.joinable());
+  _thread.join();
   {
     std::unique_lock<std::mutex> lock(mutex);
-    while(!stmap.empty())
+    while(!stmap.empty() && running.load())
       cv.wait(lock);
   }
-    assert(_thread.joinable());
-    _thread.join();
 }
 
 // See Server.h
@@ -140,27 +140,15 @@ void ServerImpl::OnRun() {
         }
 
         // TODO: Start new thread and process data from/to connection
-        try
         {
-              std::lock_guard<std::mutex> lock(mutex);
-              if ((stmap.size() >= _max_threads) || (!(running.load())))
-              {
-                  static const std::string msg = "The limit exceeded";
-                  close(client_socket);
-                  if (send(client_socket, msg.data(), msg.size(), 0) == -1)
-                      throw std::runtime_error("Failed to send response");
-              }
-              else
-              {
-                  stmap.emplace(client_socket, std::thread(&ServerImpl::Handler, this, client_socket));
-              }
-        }
-        catch (std::runtime_error &ex)
-        {
-          _logger->error("Failed to process connection on descriptor {}: {}", client_socket, ex.what());
-        }
-      }
+            std::lock_guard<std::mutex> lock(mutex);
+            if (running.load() &&  stmap.size() < _max_threads) {
+              stmap.emplace(client_socket, std::thread(&ServerImpl::Handler, this, client_socket));
+            } else {
+                close(client_socket);
+            }
 
+        }
     close(_server_socket);
     // Cleanup on exit...
     _logger->warn("Network stopped");
@@ -249,18 +237,13 @@ void ServerImpl::Handler(int client_socket)
       _logger->error("Failed to process connection on descriptor {}: {}", client_socket, ex.what());
   }
 
-  // We are done with this connection
-  close(client_socket);
-
-  // Prepare for the next command: just in case if connection was closed in the middle of executing something
-  command_to_execute.reset();
-  argument_for_command.resize(0);
-  parser.Reset();
   std::lock_guard<std::mutex> lock(mutex);
-  stmap.erase(client_socket);
-  if ((stmap.empty()) && (!(running.load())){
-        cv.notify_all();
-  }
+  auto it = stmap.find(client_socket);
+  it->second.detach();
+  stmap.erase(it);
+  close(client_socket);
+  if ((stmap.size() == 0) && !running.load())
+      cv.notify_all();
 }
 
 
