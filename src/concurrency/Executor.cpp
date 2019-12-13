@@ -1,14 +1,13 @@
 #include <afina/concurrency/Executor.h>
-#include <iostream>
 namespace Afina {
 namespace Concurrency {
 void perform(Executor *executor) {
-  while (1) {
+  while (true) {
+    std::function<void()> task;
     {
       std::unique_lock<std::mutex> lock(executor->mutex);
-      if (state != State::kRun)
+      if (executor->state != Executor::State::kRun)
         break;
-      std::function<void()> task;
       auto time = std::chrono::system_clock::now() +
                   std::chrono::milliseconds(executor->idle_time);
       while ((executor->tasks.empty()) &&
@@ -56,7 +55,6 @@ void Executor::Stop(bool await) {
   } else {
     state = State::kStopped;
   }
-  std::cout << "stop\n";
 }
 
 void Executor::Start() {
