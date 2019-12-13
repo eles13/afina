@@ -83,19 +83,19 @@ void ServerImpl::Stop() {
     std::lock_guard<std::mutex> lock(mutex);
     for (auto &sock: stmap)
       shutdown(sock.first, SHUT_RD);
+    std::cout<<"stopped\n";
 }
 
 // See Server.h
 void ServerImpl::Join() {
-  // {
-  //   std::unique_lock<std::mutex> lock(mutex);
-  //   while(!stmap.empty())
-  //     cv.wait(lock);
-  // }
-    assert(_thread.joinable());
-    _thread.join();///?? misunderstanding
-    executor.Stop(true);
-    close(_server_socket);
+  {
+    std::unique_lock<std::mutex> lock(mutex);
+    while(!stmap.empty() && running.load())
+      cv.wait(lock);
+  }
+  executor.Stop(true);
+  assert(_thread.joinable());
+  _thread.join();
 }
 
 // See Server.h
@@ -140,28 +140,6 @@ void ServerImpl::OnRun() {
             tv.tv_usec = 0;
             setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
         }
-
-        // TODO: Start new thread and process data from/to connection
-        // try
-        // {
-        //       std::lock_guard<std::mutex> lock(mutex);
-        //       if (stmap.size() >= _max_threads)
-        //       {
-        //           static const std::string msg = "The limit exceeded";
-        //           close(client_socket);
-        //           if (send(client_socket, msg.data(), msg.size(), 0) == -1)
-        //               throw std::runtime_error("Failed to send response");
-        //       }
-        //       else
-        //       {
-        //           stmap.emplace(client_socket, std::thread(&ServerImpl::Handler, this, client_socket));
-        //       }
-        // }
-        // catch (std::runtime_error &ex)
-        // {
-        //   _logger->error("Failed to process connection on descriptor {}: {}", client_socket, ex.what());
-        // }
-        // уже не нужно же?
         if (!executor.Execute(&ServerImpl::Handler, this, client_socket))
           close(client_socket);
       }
@@ -262,8 +240,13 @@ void ServerImpl::Handler(int client_socket)
   argument_for_command.resize(0);
   parser.Reset();
   std::lock_guard<std::mutex> lock(mutex);
-  cv.notify_all();
-  stmap.erase(client_socket);
+  auto it = stmap.find(client_socket);
+  it->second.detach();
+  stmap.erase(it);
+  close(client_socket);
+  if ((stmap.size() == 0) && !running.load()){
+      cv.notify_all();
+  }
 }
 
 
