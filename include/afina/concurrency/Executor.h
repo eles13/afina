@@ -3,7 +3,6 @@
 
 #include <condition_variable>
 #include <functional>
-#include <iostream>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -66,9 +65,10 @@ public:
     }
     // Enqueue new task
     tasks.push_back(exec);
-    if (threads + freeth < hight_watermark && freeth == 0) {
+    if (threads < hight_watermark && freeth == 0) {
       std::thread t(&perform, this);
       t.detach();
+      freeth++;
     }
     empty_condition.notify_one();
     return true;
