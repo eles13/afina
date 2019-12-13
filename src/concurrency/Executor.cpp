@@ -2,69 +2,63 @@
 namespace Afina {
 namespace Concurrency {
 void perform(Executor *executor) {
-  while (true) {
-    std::function<void()> task;
-    {
-      std::unique_lock<std::mutex> lock(executor->mutex);
-      if (executor->state != Executor::State::kRun)
-        break;
-      auto time = std::chrono::system_clock::now() +
-                  std::chrono::milliseconds(executor->idle_time);
-      while ((executor->tasks.empty()) &&
-             (executor->state == Executor::State::kRun)) {
-        if (executor->empty_condition.wait_until(lock, time) ==
-                std::cv_status::timeout &&
-            executor->threads + executor->freeth > executor->low_watermark) {
-          break;
-        } else {
-          executor->empty_condition.wait(lock);
+    while (true) {
+        std::function<void()> task;
+        {
+            std::unique_lock<std::mutex> lock(executor->mutex);
+            if (executor->state != Executor::State::kRun)
+                break;
+            auto time = std::chrono::system_clock::now() + std::chrono::milliseconds(executor->idle_time);
+            while ((executor->tasks.empty()) && (executor->state == Executor::State::kRun)) {
+                if (executor->empty_condition.wait_until(lock, time) == std::cv_status::timeout &&
+                    executor->threads + executor->freeth > executor->low_watermark) {
+                    break;
+                }
+            }
+            if (executor->tasks.empty())
+                continue;
+            task = executor->tasks.front();
+            executor->tasks.pop_front();
+            executor->threads++;
+            executor->freeth--;
         }
-      }
-      if (executor->tasks.empty())
-        continue;
-      task = executor->tasks.front();
-      executor->tasks.pop_front();
-      executor->threads++;
-      executor->freeth--;
+        try {
+            task();
+        } catch (...) {
+            std::terminate();
+        }
+        {
+            std::unique_lock<std::mutex> lock(executor->mutex);
+            executor->freeth++;
+            executor->threads--;
+            if (executor->state == Executor::State::kStopping && executor->tasks.size() == 0) {
+                executor->state = Executor::State::kStopped;
+                executor->stop.notify_all();
+            }
+        }
     }
-    try {
-      task();
-    } catch (...) {
-      std::terminate();
-    }
-    {
-      std::unique_lock<std::mutex> lock(executor->mutex);
-      executor->freeth++;
-      executor->threads--;
-      if (executor->state == Executor::State::kStopping &&
-          executor->tasks.size() == 0) {
-        executor->state = Executor::State::kStopped;
-        executor->stop.notify_all();
-      }
-    }
-  }
 }
 
 void Executor::Stop(bool await) {
-  std::unique_lock<std::mutex> lock(mutex);
-  if (state == State::kRun) {
-    state = State::kStopping;
-  }
-  if (await && (threads > 0)) {
-    stop.wait(lock, [&]() { return threads + freeth == 0; });
-  } else {
-    state = State::kStopped;
-  }
+    std::unique_lock<std::mutex> lock(mutex);
+    if (state == State::kRun) {
+        state = State::kStopping;
+    }
+    if (await && (threads > 0)) {
+        stop.wait(lock, [&]() { return threads == 0; });
+    } else {
+        state = State::kStopped;
+    }
 }
 
 void Executor::Start() {
-  state = State::kRun;
-  std::unique_lock<std::mutex> lock(mutex);
-  for (size_t i = 0; i < low_watermark; i++) {
-    std::thread t(&(perform), this);
-    t.detach();
-    freeth++;
-  }
+    state = State::kRun;
+    std::unique_lock<std::mutex> lock(mutex);
+    for (size_t i = 0; i < low_watermark; i++) {
+        std::thread t(&(perform), this);
+        t.detach();
+        freeth++;
+    }
 }
 
 } // namespace Concurrency
