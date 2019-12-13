@@ -8,8 +8,7 @@
 #include <queue>
 #include <string>
 #include <thread>
-#include <unordered_map>
-
+#include <iostream>
 namespace Afina {
 namespace Concurrency {
 
@@ -33,8 +32,8 @@ class Executor {
 
 public:
     Executor(std::string name, int size, size_t low, size_t hight, size_t max, size_t time)
-        : low_watermark(low), hight_watermark(hight), max_queue_size(max), idle_time(time){};
-    ~Executor();
+        : low_watermark(low), hight_watermark(hight), max_queue_size(max), idle_time(time), freeth(0), threads(0){};
+    ~Executor() {};
 
     /**
      * Signal thread pool to stop, it will stop accepting new jobs and close threads just after each become
@@ -59,12 +58,14 @@ public:
         if (state != State::kRun || tasks.size() >= max_queue_size) {
             return false;
         }
-
         // Enqueue new task
         tasks.push_back(exec);
-        if ((freeth == 0) && (threads.size() < hight_watermark)) {
-          std::thread t(&(perform), this);
-          threads.insert(std::move(std::make_pair(t.get_id(), std::move(t))));
+        if( threads + freeth < hight_watermark && freeth == 0)
+        {
+          std::thread t(&perform, this);
+          t.detach();
+          threads++;
+
         }
         empty_condition.notify_one();
         return true;
@@ -95,7 +96,7 @@ private:
     /**
      * Vector of actual threads that perorm execution
      */
-    std::unordered_map<std::thread::id,std::thread> threads;
+    size_t threads;
 
     /**
      * Task queue
@@ -112,7 +113,6 @@ private:
     size_t idle_time;
     size_t working;
     size_t freeth;
-    void deleteth(const std::unordered_map<std::thread::id,std::thread>::iterator it);
     std::condition_variable stop;
 };
 // void perform(Executor* ex);
