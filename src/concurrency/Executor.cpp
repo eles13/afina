@@ -3,11 +3,12 @@
 namespace Afina {
 namespace Concurrency {
 void perform(Executor *executor) {
-  while (executor->state == Executor::State::kRun) {
-    std::function<void()> task;
-
+  while (1) {
     {
       std::unique_lock<std::mutex> lock(executor->mutex);
+      if (state != State::kRun)
+        break;
+      std::function<void()> task;
       auto time = std::chrono::system_clock::now() +
                   std::chrono::milliseconds(executor->idle_time);
       while ((executor->tasks.empty()) &&
@@ -15,7 +16,7 @@ void perform(Executor *executor) {
         if (executor->empty_condition.wait_until(lock, time) ==
                 std::cv_status::timeout &&
             executor->threads + executor->freeth > executor->low_watermark) {
-          return;
+          break;
         } else {
           executor->empty_condition.wait(lock);
         }
@@ -43,7 +44,6 @@ void perform(Executor *executor) {
       }
     }
   }
-  std::cout<<"out\n";
 }
 
 void Executor::Stop(bool await) {
@@ -56,7 +56,7 @@ void Executor::Stop(bool await) {
   } else {
     state = State::kStopped;
   }
-  std::cout<<"stop\n";
+  std::cout << "stop\n";
 }
 
 void Executor::Start() {
