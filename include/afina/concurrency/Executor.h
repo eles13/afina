@@ -65,7 +65,7 @@ public:
     }
     // Enqueue new task
     tasks.push_back(exec);
-    if (threads < hight_watermark && freeth == 0) {
+    if (freeth == 0  && threads < hight_watermark) {
       std::thread t(&perform, this);
       t.detach();
       freeth++;
