@@ -3,7 +3,6 @@ namespace Afina {
 namespace Concurrency {
 void perform(Executor *executor) {
     while (true) {
-        bool timeoutoccured = false;
         std::function<void()> task;
         {
             std::unique_lock<std::mutex> lock(executor->mutex);
@@ -13,38 +12,39 @@ void perform(Executor *executor) {
             while ((executor->tasks.empty()) && (executor->state == Executor::State::kRun)) {
                 if (executor->empty_condition.wait_until(lock, time) == std::cv_status::timeout &&
                     executor->threads + executor->freeth > executor->low_watermark) {
-                    timeoutoccured = true;
                     executor->state = Executor::State::kStopping;
                     break;
                 }
             }
-            if(!timeoutoccured){
-              if (executor->tasks.empty())
-                  continue;
-              task = executor->tasks.front();
-              executor->tasks.pop_front();
-              executor->threads++;
-              executor->freeth--;
+            if(executor->state!=Executor::State::kRun){
+              break;
             }
+            if (executor->tasks.empty()){
+                continue;
+            }
+            task = executor->tasks.front();
+            executor->tasks.pop_front();
+            executor->threads++;
+            executor->freeth--;
         }
-        if (!timeoutoccured){
-          try {
-              task();
-          } catch (...) {
-              std::terminate();
-          }
+        try {
+            task();
+        } catch (...) {
+            std::terminate();
         }
         {
             std::unique_lock<std::mutex> lock(executor->mutex);
-            if(!timeoutoccured){
               executor->freeth++;
               executor->threads--;
-            }
             if (executor->state == Executor::State::kStopping && executor->tasks.size() == 0) {
                 executor->state = Executor::State::kStopped;
                 executor->stop.notify_all();
+                break;
             }
         }
+    }
+    if(executor->state!=State::kStopped && executor->threads == 0){
+      executor->state = kStopped;
     }
 }
 
