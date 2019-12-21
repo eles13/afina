@@ -20,6 +20,7 @@ void Connection::Start() {
 // See Connection.h
 void Connection::OnError() {
     alive.store(false);
+    std::unique_lock<std::mutex> lock(mutex);
     _logger->info("Error on descriptor {}", _socket);
     _logger->error("Error connection on descriptor {}", _socket);
     std::string err_message = "something went wrong\r\n";
@@ -31,25 +32,23 @@ void Connection::OnError() {
 // See Connection.h
 void Connection::OnClose() {
     alive.store(false);
+    std::unique_lock<std::mutex> lock(mutex);
     _logger->info("Close on descriptor {}", _socket);
     _logger->debug("Closed connection on descriptor {}", _socket);
     std::string message = "Connection is closed\r\n";
     if (send(_socket, message.data(), message.size(), 0) <= 0) {
         throw std::runtime_error("Failed to send response");
     }
-
 }
 
 // See Connection.h
 void Connection::DoRead() {
-    std::lock_guard<std::mutex> lock(mutex);
+    std::unique_lock<std::mutex> lock(mutex);
     try {
-        int readed = -1;
-        char client_buffer[4096];
-        while (((readed = read(_socket, client_buffer, sizeof(client_buffer))) - readed_bytes) > 0) {
-            readed_bytes+= readed;
+        for_read = 0;
+        while ((for_read = read(_socket, client_buffer + readed_bytes, sizeof(client_buffer)) - readed_bytes) > 0) {
             _logger->debug("Got {} bytes from socket", readed_bytes);
-
+            readed_bytes += for_read;
             // Single block of data readed from the socket could trigger inside actions a multiple times,
             // for example:
             // - read#0: [<command1 offset>]
@@ -111,50 +110,48 @@ void Connection::DoRead() {
             } // while (readed_bytes)
         }
 
-        if (readed_bytes == 0) {
-            _logger->debug("Connection closed");
-        } else {
+        _logger->debug("Client stop to write to connection on descriptor {}", client_socket);
+        if (errno == EAGAIN) {
             throw std::runtime_error(std::string(strerror(errno)));
         }
     } catch (std::runtime_error &ex) {
-        _logger->error("Failed to process connection on descriptor {}: {}", _socket, ex.what());
+        _logger->error("Failed to read from connection on descriptor {}: {}", client_socket, ex.what());
     }
-
-    // Prepare for the next command: just in case if connection was closed in the middle of executing something
-    command_to_execute.reset();
-    argument_for_command.resize(0);
-    parser.Reset();
-    _event.events |= EPOLLOUT;
 }
 
 // See Connection.h
 void Connection::DoWrite() {
     std::lock_guard<std::mutex> lock(mutex);
-    struct iovec *vecs = new struct iovec[results.size()];
-    size_t i = 0;
-    for (auto result : results) {
-        vecs[i].iov_len = result.size();
-        vecs[i].iov_base = &(result[0]);
-        i++;
+    try{
+      struct iovec *vecs = new struct iovec[results.size()];
+      size_t i = 0;
+      for (auto result : results) {
+          vecs[i].iov_len = result.size();
+          vecs[i].iov_base = &(result[0]);
+          i++;
+      }
+      vecs[0].iov_base = (char *)(vecs[0].iov_base) + offset;
+      vecs[0].iov_len -= offset;
+      int done;
+      if ((done = writev(_socket, vecs, results.size())) <= 0) {
+          _logger->error("Failed to send response");
+      }
+      offset += done;
+      i = 0;
+      for (; i < results.size() && (offset >= vecs[i].iov_len); i++) {
+          offset -= vecs[i].iov_len;
+      }
+      results.erase(results.begin(), results.begin() + i);
+      if (results.empty()) {
+          _event.events = EPOLLIN;
+      }
+      delete[] vecs;
+    } catch (std::runtime_error &ex) {
+        _logger->error("Failed to writing to connection on descriptor {}: {} \n", _socket, ex.what());
+        alive = false;
     }
-    vecs[0].iov_base = (char *)(vecs[0].iov_base) + offset;
-    vecs[0].iov_len -= offset;
-    int done;
-    if ((done = writev(_socket, vecs, results.size())) <= 0) {
-        _logger->error("Failed to send response");
-    }
-    offset += done;
-    i = 0;
-    for (; i < results.size() && (offset >= vecs[i].iov_len); i++) {
-        offset -= vecs[i].iov_len;
-    }
-    results.erase(results.begin(), results.begin() + i);
-    if (results.empty()) {
-        _event.events = EPOLLIN;
-    }
-    delete[] vecs;
 }
 
-} // namespace STnonblock
+} // namespace MTnonblock
 } // namespace Network
 } // namespace Afina

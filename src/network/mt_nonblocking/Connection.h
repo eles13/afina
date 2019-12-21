@@ -2,7 +2,10 @@
 #define AFINA_NETWORK_MT_NONBLOCKING_CONNECTION_H
 
 #include <cstring>
-
+#include <mutex>
+#include <atomic>
+#include <vector>
+#include <string>
 #include <afina/Storage.h>
 #include <afina/execute/Command.h>
 #include <afina/logging/Service.h>
@@ -24,6 +27,7 @@ public:
         _event.events = EPOLLIN;
         alive.store(false);
         offset = 0;
+        for_read = 0;
     }
 
     inline bool isAlive() const { return alive; }
@@ -53,6 +57,8 @@ private:
     size_t offset;
     std::mutex mutex;
     int readed_bytes;
+    int for_read;
+    char client_buffer[4096];
 };
 
 } // namespace MTnonblock
