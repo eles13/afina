@@ -11,6 +11,7 @@ namespace STnonblock {
 // See Connection.h
 void Connection::Start() {
     _logger->info("offset on descriptor {}", _socket);
+    readed_bytes = 0;
     _event.data.fd = _socket;
     _event.data.ptr = this;
     _event.events = EPOLLIN;
@@ -42,11 +43,10 @@ void Connection::OnClose() {
 // See Connection.h
 void Connection::DoRead() {
     try {
-        int readed_bytes = -1;
-        char client_buffer[4096];
-        while ((readed_bytes = read(_socket, client_buffer, sizeof(client_buffer))) > 0) {
+        for_read = 0;
+        while ((for_read = read(_socket, client_buffer + readed_bytes, sizeof(client_buffer)) - readed_bytes) > 0) {
             _logger->debug("Got {} bytes from socket", readed_bytes);
-
+            readed_bytes += for_read;
             // Single block of data readed from the socket could trigger inside actions a multiple times,
             // for example:
             // - read#0: [<command1 offset>]
@@ -108,24 +108,18 @@ void Connection::DoRead() {
             } // while (readed_bytes)
         }
 
-        if (readed_bytes == 0) {
-            _logger->debug("Connection closed");
-        } else {
+        _logger->debug("Client stop to write to connection on descriptor {}", client_socket);
+        if (errno == EAGAIN) {
             throw std::runtime_error(std::string(strerror(errno)));
         }
-    } catch (std::runtime_error &ex) {
-        _logger->error("Failed to process connection on descriptor {}: {}", _socket, ex.what());
+      } catch (std::runtime_error &ex) {
+        _logger->error("Failed to read from connection on descriptor {}: {}", client_socket, ex.what());
     }
-
-    // Prepare for the next command: just in case if connection was closed in the middle of executing something
-    command_to_execute.reset();
-    argument_for_command.resize(0);
-    parser.Reset();
-    _event.events |= EPOLLOUT;
 }
 
 // See Connection.h
 void Connection::DoWrite() {
+    try{
     struct iovec *vecs = new struct iovec[results.size()];
     size_t i = 0;
     for (auto result : results) {
@@ -149,6 +143,10 @@ void Connection::DoWrite() {
         _event.events = EPOLLIN;
     }
     delete[] vecs;
+    } catch (std::runtime_error &ex) {
+        _logger->error("Failed to writing to connection on descriptor {}: {} \n", _socket, ex.what());
+        alive = false;
+    }
 }
 
 } // namespace STnonblock

@@ -2,7 +2,8 @@
 #define AFINA_NETWORK_ST_NONBLOCKING_CONNECTION_H
 
 #include <cstring>
-
+#include <string>
+#include <vector>
 #include <afina/Storage.h>
 #include <afina/execute/Command.h>
 #include <afina/logging/Service.h>
@@ -24,6 +25,7 @@ public:
         _event.events = EPOLLIN;
         alive = false;
         offset = 0;
+        for_read = 0;
     }
 
     inline bool isAlive() const { return alive; }
@@ -50,6 +52,9 @@ private:
     std::unique_ptr<Execute::Command> command_to_execute;
     std::vector<std::string> results;
     size_t offset;
+    int readed_bytes;
+    int for_read;
+    char client_buffer[4096];
 };
 
 } // namespace STnonblock
