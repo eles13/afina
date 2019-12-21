@@ -4,22 +4,24 @@ namespace Concurrency {
 void perform(Executor *executor) {
     while (true) {
         std::function<void()> task;
+        bool timeoutoccured = false;
         {
             std::unique_lock<std::mutex> lock(executor->mutex);
-            if (executor->state != Executor::State::kRun)
+            if (executor->state != Executor::State::kRun){
                 break;
+            }
             auto time = std::chrono::system_clock::now() + std::chrono::milliseconds(executor->idle_time);
             while ((executor->tasks.empty()) && (executor->state == Executor::State::kRun)) {
                 if (executor->empty_condition.wait_until(lock, time) == std::cv_status::timeout &&
                     executor->threads + executor->freeth > executor->low_watermark) {
-                    executor->state = Executor::State::kStopping;
+                    timeoutoccured = true;
                     break;
                 }
             }
-            if(executor->state!=Executor::State::kRun){
+            if(timeoutoccured){
               break;
             }
-            if (executor->tasks.empty()){
+            if (executor->tasks.empty()) {
                 continue;
             }
             task = executor->tasks.front();
@@ -34,17 +36,14 @@ void perform(Executor *executor) {
         }
         {
             std::unique_lock<std::mutex> lock(executor->mutex);
-              executor->freeth++;
-              executor->threads--;
-            if (executor->state == Executor::State::kStopping && executor->tasks.size() == 0) {
+            executor->freeth++;
+            executor->threads--;
+            if (executor->state == Executor::State::kStopping && executor->tasks.empty()) {
                 executor->state = Executor::State::kStopped;
                 executor->stop.notify_all();
                 break;
             }
         }
-    }
-    if(executor->state!=State::kStopped && executor->threads == 0){
-      executor->state = kStopped;
     }
 }
 
@@ -55,9 +54,7 @@ void Executor::Stop(bool await) {
     }
     if (await && (threads > 0) && state == State::kStopping) {
         stop.wait(lock, [&]() { return threads == 0; });
-    } else
-    if (threads == 0)
-    {
+    } else if (threads == 0) {
         state = State::kStopped;
     }
 }
