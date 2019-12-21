@@ -112,37 +112,37 @@ void Connection::DoRead() {
         if (errno == EAGAIN) {
             throw std::runtime_error(std::string(strerror(errno)));
         }
-      } catch (std::runtime_error &ex) {
+    } catch (std::runtime_error &ex) {
         _logger->error("Failed to read from connection on descriptor {}: {}", client_socket, ex.what());
     }
 }
 
 // See Connection.h
 void Connection::DoWrite() {
-    try{
-    struct iovec *vecs = new struct iovec[results.size()];
-    size_t i = 0;
-    for (auto result : results) {
-        vecs[i].iov_len = result.size();
-        vecs[i].iov_base = &(result[0]);
-        i++;
-    }
-    vecs[0].iov_base = (char *)(vecs[0].iov_base) + offset;
-    vecs[0].iov_len -= offset;
-    int done;
-    if ((done = writev(_socket, vecs, results.size())) <= 0) {
-        _logger->error("Failed to send response");
-    }
-    offset += done;
-    i = 0;
-    for (; i < results.size() && (offset >= vecs[i].iov_len); i++) {
-        offset -= vecs[i].iov_len;
-    }
-    results.erase(results.begin(), results.begin() + i);
-    if (results.empty()) {
-        _event.events = EPOLLIN;
-    }
-    delete[] vecs;
+    try {
+        struct iovec *vecs = new struct iovec[results.size()];
+        size_t i = 0;
+        for (auto result : results) {
+            vecs[i].iov_len = result.size();
+            vecs[i].iov_base = &(result[0]);
+            i++;
+        }
+        vecs[0].iov_base = (char *)(vecs[0].iov_base) + offset;
+        vecs[0].iov_len -= offset;
+        int done;
+        if ((done = writev(_socket, vecs, results.size())) <= 0) {
+            _logger->error("Failed to send response");
+        }
+        offset += done;
+        i = 0;
+        for (; i < results.size() && (offset >= vecs[i].iov_len); i++) {
+            offset -= vecs[i].iov_len;
+        }
+        results.erase(results.begin(), results.begin() + i);
+        if (results.empty()) {
+            _event.events = EPOLLIN;
+        }
+        delete[] vecs;
     } catch (std::runtime_error &ex) {
         _logger->error("Failed to writing to connection on descriptor {}: {} \n", _socket, ex.what());
         alive = false;
