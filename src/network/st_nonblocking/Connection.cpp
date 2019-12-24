@@ -8,30 +8,29 @@ namespace STnonblock {
 
 // See Connection.h
 void Connection::Start() {
-   _logger->info("offset on descriptor {}", _socket);
-   _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
-   command_to_execute.reset();
-   argument_for_command.resize(0);
-   parser.Reset();
-   alive = true;
+    _logger->info("offset on descriptor {}", _socket);
+    _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
+    command_to_execute.reset();
+    argument_for_command.resize(0);
+    parser.Reset();
+    alive = true;
 }
-
 
 // See Connection.h
 void Connection::OnError() {
-  _logger->info("Error on descriptor {}", _socket);
-  alive = false;
+    _logger->info("Error on descriptor {}", _socket);
+    alive = false;
 }
 
 // See Connection.h
 void Connection::OnClose() {
-  _logger->info("Close on descriptor {}", _socket);
-  alive = false;
+    _logger->info("Close on descriptor {}", _socket);
+    alive = false;
 }
 
 // See Connection.h
 void Connection::DoRead() {
-  try {
+    try {
         int for_read = -1;
         while ((for_read = read(_socket, client_buffer + readed_bytes, sizeof(client_buffer) - readed_bytes)) > 0) {
             _logger->debug("Got {} bytes from socket", readed_bytes);
@@ -93,8 +92,8 @@ void Connection::DoRead() {
                     command_to_execute.reset();
                     argument_for_command.resize(0);
                     parser.Reset();
-                    if(nw){
-                      _event.events = EPOLLOUT | EPOLLRDHUP | EPOLLERR;
+                    if (nw) {
+                        _event.events = EPOLLOUT | EPOLLRDHUP | EPOLLERR;
                     }
                 }
             } // while (readed_bytes)
@@ -108,36 +107,36 @@ void Connection::DoRead() {
 // See Connection.h
 void Connection::DoWrite() {
     assert(!results.empty());
-    try{
-      struct iovec vecs[results.size()];
-      size_t i = 0;
-      for (auto result : results) {
-          vecs[i].iov_len = result.size();
-          vecs[i].iov_base = &(result[0]);
-          i++;
-      }
-      vecs[0].iov_base = (char *)(vecs[0].iov_base) + offset;
-      vecs[0].iov_len -= offset;
-      int done;
-      if ((done = writev(_socket, vecs, results.size())) <= 0) {
-          throw std::runtime_error(std::string(strerror(errno)));
-      }
-      offset += done;
-      auto result_it = results.begin();
-      for (auto result : results) {
-          if (offset < result.size()) {
-              break;
-          }
-          offset -= result.size();
-          result_it++;
-      }
-      results.erase(results.begin(), result_it);
-      if (results.empty()) {
-          _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
-      }
-    } catch (std::runtime_error &ex){
-      _logger->error("Failed to writing to connection on descriptor {}: {} \n", _socket, ex.what());
-      alive = false;
+    try {
+        struct iovec vecs[results.size()];
+        size_t i = 0;
+        for (auto result : results) {
+            vecs[i].iov_len = result.size();
+            vecs[i].iov_base = &(result[0]);
+            i++;
+        }
+        vecs[0].iov_base = (char *)(vecs[0].iov_base) + offset;
+        vecs[0].iov_len -= offset;
+        int done;
+        if ((done = writev(_socket, vecs, results.size())) <= 0) {
+            throw std::runtime_error(std::string(strerror(errno)));
+        }
+        offset += done;
+        auto result_it = results.begin();
+        for (auto result : results) {
+            if (offset < result.size()) {
+                break;
+            }
+            offset -= result.size();
+            result_it++;
+        }
+        results.erase(results.begin(), result_it);
+        if (results.empty()) {
+            _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
+        }
+    } catch (std::runtime_error &ex) {
+        _logger->error("Failed to writing to connection on descriptor {}: {} \n", _socket, ex.what());
+        alive = false;
     }
 }
 
