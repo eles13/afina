@@ -93,7 +93,6 @@ void Connection::DoRead() {
                     command_to_execute.reset();
                     argument_for_command.resize(0);
                     parser.Reset();
-                    _event.events |= EPOLLOUT;
                     if(nw){
                       _event.events = EPOLLOUT | EPOLLRDHUP | EPOLLERR;
                     }
