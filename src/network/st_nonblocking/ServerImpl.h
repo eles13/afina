@@ -3,7 +3,8 @@
 
 #include <thread>
 #include <vector>
-
+#include <unordered_set>
+#include "Connection.h"
 #include <afina/network/Server.h>
 
 namespace spdlog {
@@ -56,6 +57,7 @@ private:
 
     // IO thread
     std::thread _work_thread;
+    std::unordered_set<Connection*> cons;
 };
 
 } // namespace STnonblock
