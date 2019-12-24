@@ -2,12 +2,12 @@
 namespace Afina {
 namespace Concurrency {
 void perform(Executor *executor) {
-    while (true) {
+    bool timeoutoccured = false;
+    while (!timeoutoccured) {
         std::function<void()> task;
-        bool timeoutoccured = false;
         {
             std::unique_lock<std::mutex> lock(executor->mutex);
-            if (executor->state != Executor::State::kRun){
+            if (executor->state != Executor::State::kRun) {
                 break;
             }
             auto time = std::chrono::system_clock::now() + std::chrono::milliseconds(executor->idle_time);
@@ -18,21 +18,22 @@ void perform(Executor *executor) {
                     break;
                 }
             }
-            if(timeoutoccured){
-              break;
+            if (!timeoutoccured) {
+                if (executor->tasks.empty()) {
+                    continue;
+                }
+                task = executor->tasks.front();
+                executor->tasks.pop_front();
+                executor->threads++;
+                executor->freeth--;
             }
-            if (executor->tasks.empty()) {
-                continue;
-            }
-            task = executor->tasks.front();
-            executor->tasks.pop_front();
-            executor->threads++;
-            executor->freeth--;
         }
-        try {
-            task();
-        } catch (...) {
-            std::terminate();
+        if (!timeoutoccured) {
+            try {
+                task();
+            } catch (...) {
+                std::terminate();
+            }
         }
         {
             std::unique_lock<std::mutex> lock(executor->mutex);
@@ -42,6 +43,9 @@ void perform(Executor *executor) {
                 executor->state = Executor::State::kStopped;
                 executor->stop.notify_all();
                 break;
+            }
+            if(timeoutoccured){
+              break;
             }
         }
     }
