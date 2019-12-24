@@ -44,6 +44,9 @@ void perform(Executor *executor) {
                 executor->stop.notify_all();
                 break;
             }
+            if(timeoutoccured){
+              break;
+            }
         }
     }
 }
