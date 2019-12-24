@@ -93,7 +93,7 @@ void ServerImpl::Stop() {
     }
     for (auto pc : cons) {
         pc->OnClose();
-        close(pcn->_socket);
+        close(pc->_socket);
         delete pc;
     }
     cons.clear();
