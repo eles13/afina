@@ -25,6 +25,7 @@ void Connection::OnError() {
 // See Connection.h
 void Connection::OnClose() {
     _logger->info("Close on descriptor {}", _socket);
+    close(_socket);
     alive = false;
 }
 
