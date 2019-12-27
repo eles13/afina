@@ -32,7 +32,10 @@ public:
         arg_remains = 0;
     }
 
-    inline bool isAlive() const { return alive; }
+    inline bool isAlive() const {
+        std::unique_lock<std::mutex> lock(mutex);
+        return alive;
+    }
 
     void Start();
 
