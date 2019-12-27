@@ -12,12 +12,7 @@ namespace STnonblock {
 void Connection::Start() {
     _logger->info("offset on descriptor {}", _socket);
     readed_bytes = 0;
-    _event.data.fd = _socket;
-    _event.data.ptr = this;
     _event.events = EPOLLIN | EPOLLHUP | EPOLLERR;
-    command_to_execute.reset();
-    argument_for_command.resize(0);
-    parser.Reset();
     alive = true;
 }
 
