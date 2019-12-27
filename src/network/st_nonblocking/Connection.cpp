@@ -1,7 +1,9 @@
 #include "Connection.h"
 
 #include <iostream>
-
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
 namespace Afina {
 namespace Network {
 namespace STnonblock {
@@ -9,7 +11,10 @@ namespace STnonblock {
 // See Connection.h
 void Connection::Start() {
     _logger->info("offset on descriptor {}", _socket);
-    _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
+    readed_bytes = 0;
+    _event.data.fd = _socket;
+    _event.data.ptr = this;
+    _event.events = EPOLLIN | EPOLLHUP | EPOLLERR;
     command_to_execute.reset();
     argument_for_command.resize(0);
     parser.Reset();
@@ -31,8 +36,8 @@ void Connection::OnClose() {
 // See Connection.h
 void Connection::DoRead() {
     try {
-        int for_read = -1;
-        while ((for_read = read(_socket, client_buffer + readed_bytes, sizeof(client_buffer) - readed_bytes)) > 0) {
+        for_read = -1;
+        while ((for_read = read(_socket, client_buffer + readed_bytes, sizeof(client_buffer)) - readed_bytes) > 0) {
             _logger->debug("Got {} bytes from socket", readed_bytes);
             readed_bytes += for_read;
             // Single block of data readed from the socket could trigger inside actions a multiple times,
@@ -84,22 +89,27 @@ void Connection::DoRead() {
                     command_to_execute->Execute(*pStorage, argument_for_command, result);
 
                     // Send response
+                    bool ndup = results.empty();
                     result += "\r\n";
-                    bool nw = results.empty();
                     results.push_back(result);
 
                     // Prepare for the next command
                     command_to_execute.reset();
                     argument_for_command.resize(0);
                     parser.Reset();
-                    if (nw) {
+                    if (ndup) {
                         _event.events = EPOLLOUT | EPOLLRDHUP | EPOLLERR;
                     }
                 }
-            } // while (readed_bytes)
+            }
+        }
+        if (readed_bytes == 0) {
+            _logger->debug("Connection closed");
+        } else {
+            throw std::runtime_error(std::string(strerror(errno)));
         }
     } catch (std::runtime_error &ex) {
-        _logger->error("Failed to process connection on descriptor {}: {}", _socket, ex.what());
+        _logger->error("Failed to read from connection on descriptor {}: {}", _socket, ex.what());
         alive = false;
     }
 }
@@ -107,30 +117,30 @@ void Connection::DoRead() {
 // See Connection.h
 void Connection::DoWrite() {
     assert(!results.empty());
+    size_t osize = std::min(results.size(), N);
+    struct iovec vecs[osize];
     try {
-        struct iovec vecs[results.size()];
-        size_t i = 0;
-        for (auto result : results) {
-            vecs[i].iov_len = result.size();
-            vecs[i].iov_base = &(result[0]);
-            i++;
+        for(size_t i = 0; i < osize; i++){
+          vecs[i].iov_base = &results[i][0];
+          vecs[i].iov_len = results[i].size();
         }
         vecs[0].iov_base = (char *)(vecs[0].iov_base) + offset;
         vecs[0].iov_len -= offset;
         int done;
         if ((done = writev(_socket, vecs, results.size())) <= 0) {
+            _logger->error("Failed to send response");
             throw std::runtime_error(std::string(strerror(errno)));
         }
         offset += done;
-        auto result_it = results.begin();
+        int cres = 0;
         for (auto result : results) {
             if (offset < result.size()) {
                 break;
             }
             offset -= result.size();
-            result_it++;
+            cres++;
         }
-        results.erase(results.begin(), result_it);
+        results.erase(results.begin(), results.begin() + cres);
         if (results.empty()) {
             _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
         }
