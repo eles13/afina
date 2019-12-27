@@ -1,5 +1,5 @@
-#ifndef AFINA_NETWORK_ST_NONBLOCKING_CONNECTION_H
-#define AFINA_NETWORK_ST_NONBLOCKING_CONNECTION_H
+#ifndef AFINA_NETWORK_MT_NONBLOCKING_CONNECTION_H
+#define AFINA_NETWORK_MT_NONBLOCKING_CONNECTION_H
 
 #include <afina/Storage.h>
 #include <afina/execute/Command.h>
@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstring>
+#include <mutex>
 #include <protocol/Parser.h>
 #include <string>
 #include <sys/epoll.h>
@@ -15,7 +16,7 @@
 
 namespace Afina {
 namespace Network {
-namespace STnonblock {
+namespace MTnonblock {
 
 class Connection {
 public:
@@ -57,10 +58,11 @@ private:
     char client_buffer[4096];
     int for_read;
     int readed_bytes;
+    std::mutex mutex;
 };
 
-} // namespace STnonblock
+} // namespace MTnonblock
 } // namespace Network
 } // namespace Afina
 
-#endif // AFINA_NETWORK_ST_NONBLOCKING_CONNECTION_H
+#endif // AFINA_NETWORK_MT_NONBLOCKING_CONNECTION_H

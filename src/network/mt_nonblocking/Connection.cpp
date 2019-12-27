@@ -6,10 +6,11 @@
 #include <unistd.h>
 namespace Afina {
 namespace Network {
-namespace STnonblock {
+namespace MTnonblock {
 
 // See Connection.h
 void Connection::Start() {
+    std::unique_lock<std::mutex> lock(mutex);
     _logger->info("offset on descriptor {}", _socket);
     readed_bytes = 0;
     _event.events = EPOLLIN | EPOLLHUP | EPOLLERR;
@@ -18,12 +19,14 @@ void Connection::Start() {
 
 // See Connection.h
 void Connection::OnError() {
+    std::unique_lock<std::mutex> lock(mutex);
     _logger->info("Error on descriptor {}", _socket);
     alive = false;
 }
 
 // See Connection.h
 void Connection::OnClose() {
+    std::unique_lock<std::mutex> lock(mutex);
     _logger->info("Close on descriptor {}", _socket);
     close(_socket);
     alive = false;
@@ -31,6 +34,7 @@ void Connection::OnClose() {
 
 // See Connection.h
 void Connection::DoRead() {
+    std::unique_lock<std::mutex> lock(mutex);
     try {
         for_read = -1;
         while ((for_read = read(_socket, client_buffer + readed_bytes, sizeof(client_buffer)) - readed_bytes) > 0) {
@@ -112,13 +116,14 @@ void Connection::DoRead() {
 
 // See Connection.h
 void Connection::DoWrite() {
+    std::unique_lock<std::mutex> lock(mutex);
     assert(!results.empty());
     size_t osize = std::min(results.size(), N);
     struct iovec vecs[osize];
     try {
-        for(size_t i = 0; i < osize; i++){
-          vecs[i].iov_base = &results[i][0];
-          vecs[i].iov_len = results[i].size();
+        for (size_t i = 0; i < osize; i++) {
+            vecs[i].iov_base = &results[i][0];
+            vecs[i].iov_len = results[i].size();
         }
         vecs[0].iov_base = (char *)(vecs[0].iov_base) + offset;
         vecs[0].iov_len -= offset;
@@ -146,6 +151,6 @@ void Connection::DoWrite() {
     }
 }
 
-} // namespace STnonblock
+} // namespace MTnonblock
 } // namespace Network
 } // namespace Afina
