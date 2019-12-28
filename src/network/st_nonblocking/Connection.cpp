@@ -94,7 +94,7 @@ void Connection::DoRead() {
                     argument_for_command.resize(0);
                     parser.Reset();
                     if (ndup) {
-                        _event.events = EPOLLOUT | EPOLLRDHUP | EPOLLERR;
+                        _event.events |= EPOLLOUT | EPOLLRDHUP | EPOLLERR;
                     }
                 }
             }
