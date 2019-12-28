@@ -128,7 +128,7 @@ void Connection::DoWrite() {
         vecs[0].iov_base = (char *)(vecs[0].iov_base) + offset;
         vecs[0].iov_len -= offset;
         int done;
-        if ((done = writev(_socket, vecs, results.size())) <= 0) {
+        if ((done = writev(_socket, vecs, osize)) <= 0) {
             _logger->error("Failed to send response");
             throw std::runtime_error(std::string(strerror(errno)));
         }
