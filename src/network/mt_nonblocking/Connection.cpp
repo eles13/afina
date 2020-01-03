@@ -98,14 +98,14 @@ void Connection::DoRead() {
                     argument_for_command.resize(0);
                     parser.Reset();
                     if (ndup) {
-                        _event.events |= EPOLLOUT | EPOLLRDHUP | EPOLLERR;
+                        _event.events |= EPOLLOUT;
                     }
                 }
             }
         }
         if (readed_bytes == 0) {
             _logger->debug("Connection closed");
-        } else {
+        } else if (errno != EAGAIN && errno != EWOULDBLOCK){
             throw std::runtime_error(std::string(strerror(errno)));
         }
     } catch (std::runtime_error &ex) {
@@ -121,29 +121,36 @@ void Connection::DoWrite() {
     size_t osize = std::min(results.size(), N);
     struct iovec vecs[osize];
     try {
+        auto result_it = results.begin();
         for (size_t i = 0; i < osize; i++) {
-            vecs[i].iov_base = &results[i][0];
-            vecs[i].iov_len = results[i].size();
+            vecs[i].iov_base = &(*result_it)[0];
+            vecs[i].iov_len = (*result_it).size();
+            result_it++;
         }
         vecs[0].iov_base = (char *)(vecs[0].iov_base) + offset;
         vecs[0].iov_len -= offset;
         int done;
-        if ((done = writev(_socket, vecs, osize)) <= 0) {
-            _logger->error("Failed to send response");
-            throw std::runtime_error(std::string(strerror(errno)));
+        if ((done = writev(_socket, vecs, results.size())) <= 0) {
+            if (errno != EAGAIN && errno != EWOULDBLOCK){
+              _logger->error("Failed to send response");
+              throw std::runtime_error(std::string(strerror(errno)));
+            }
+        }
+        if (done <= 0){
+          return;
         }
         offset += done;
-        int cres = 0;
-        for (auto result : results) {
-            if (offset < result.size()) {
+        result_it = results.begin();
+        while(result_it != results.end()) {
+            if (offset < (*result_it).size()) {
                 break;
             }
-            offset -= result.size();
-            cres++;
+            offset -= (*result_it).size();
+            result_it++;
         }
-        results.erase(results.begin(), results.begin() + cres);
+        results.erase(results.begin(), result_it);
         if (results.empty()) {
-            _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
+            _event.events ^= EPOLLOUT;
         }
     } catch (std::runtime_error &ex) {
         _logger->error("Failed to writing to connection on descriptor {}: {} \n", _socket, ex.what());
