@@ -37,15 +37,14 @@ void perform(Executor *executor) {
         }
         {
             std::unique_lock<std::mutex> lock(executor->mutex);
-            executor->freeth++;
+            if(!timeoutoccured){
+              executor->freeth++;
+            }
             executor->threads--;
             if (executor->state == Executor::State::kStopping && executor->tasks.empty()) {
                 executor->state = Executor::State::kStopped;
                 executor->stop.notify_all();
                 break;
-            }
-            if(timeoutoccured){
-              break;
             }
         }
     }
@@ -56,7 +55,7 @@ void Executor::Stop(bool await) {
     if (state == State::kRun) {
         state = State::kStopping;
     }
-    if (await && (threads > 0) && state == State::kStopping) {
+    if (await && (threads > 0)) {
         stop.wait(lock, [&]() { return threads == 0; });
     } else if (threads == 0) {
         state = State::kStopped;
