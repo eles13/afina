@@ -11,31 +11,42 @@ namespace STnonblock {
 // See Connection.h
 void Connection::Start() {
     _logger->info("offset on descriptor {}", _socket);
-    readed_bytes = 0;
-    _event.events = EPOLLIN | EPOLLHUP | EPOLLERR;
+    _event.data.fd = _socket;
+    _event.data.ptr = this;
+    _event.events = EPOLLIN;
     alive = true;
 }
 
 // See Connection.h
 void Connection::OnError() {
     _logger->info("Error on descriptor {}", _socket);
+    _logger->error("Error connection on descriptor {}", _socket);
+    std::string err_message = "something went wrong\r\n";
+    if (send(_socket, err_message.data(), err_message.size(), 0) <= 0) {
+        throw std::runtime_error("Failed to send response");
+    }
     alive = false;
 }
 
 // See Connection.h
 void Connection::OnClose() {
     _logger->info("Close on descriptor {}", _socket);
-    close(_socket);
+    _logger->debug("Closed connection on descriptor {}", _socket);
+    std::string message = "Connection is closed\r\n";
+    if (send(_socket, message.data(), message.size(), 0) <= 0) {
+        throw std::runtime_error("Failed to send response");
+    }
     alive = false;
 }
 
 // See Connection.h
 void Connection::DoRead() {
     try {
-        for_read = -1;
-        while ((for_read = read(_socket, client_buffer + readed_bytes, sizeof(client_buffer)) - readed_bytes) > 0) {
+        int readed_bytes = -1;
+        char client_buffer[4096];
+        while ((readed_bytes = read(_socket, client_buffer, sizeof(client_buffer))) > 0) {
             _logger->debug("Got {} bytes from socket", readed_bytes);
-            readed_bytes += for_read;
+
             // Single block of data readed from the socket could trigger inside actions a multiple times,
             // for example:
             // - read#0: [<command1 offset>]
@@ -85,7 +96,6 @@ void Connection::DoRead() {
                     command_to_execute->Execute(*pStorage, argument_for_command, result);
 
                     // Send response
-                    bool ndup = results.empty();
                     result += "\r\n";
                     results.push_back(result);
 
@@ -93,57 +103,52 @@ void Connection::DoRead() {
                     command_to_execute.reset();
                     argument_for_command.resize(0);
                     parser.Reset();
-                    if (ndup) {
-                        _event.events |= EPOLLOUT | EPOLLRDHUP | EPOLLERR;
-                    }
+                    _event.events |= EPOLLOUT;
                 }
-            }
+            } // while (readed_bytes)
         }
+
         if (readed_bytes == 0) {
             _logger->debug("Connection closed");
         } else {
             throw std::runtime_error(std::string(strerror(errno)));
         }
     } catch (std::runtime_error &ex) {
-        _logger->error("Failed to read from connection on descriptor {}: {}", _socket, ex.what());
-        alive = false;
+        _logger->error("Failed to process connection on descriptor {}: {}", _socket, ex.what());
     }
+
+    // Prepare for the next command: just in case if connection was closed in the middle of executing something
+    command_to_execute.reset();
+    argument_for_command.resize(0);
+    parser.Reset();
+    _event.events |= EPOLLOUT;
 }
 
 // See Connection.h
 void Connection::DoWrite() {
-    assert(!results.empty());
-    size_t osize = std::min(results.size(), N);
-    struct iovec vecs[osize];
-    try {
-        for(size_t i = 0; i < osize; i++){
-          vecs[i].iov_base = &results[i][0];
-          vecs[i].iov_len = results[i].size();
-        }
-        vecs[0].iov_base = (char *)(vecs[0].iov_base) + offset;
-        vecs[0].iov_len -= offset;
-        int done;
-        if ((done = writev(_socket, vecs, osize)) <= 0) {
-            _logger->error("Failed to send response");
-            throw std::runtime_error(std::string(strerror(errno)));
-        }
-        offset += done;
-        int cres = 0;
-        for (auto result : results) {
-            if (offset < result.size()) {
-                break;
-            }
-            offset -= result.size();
-            cres++;
-        }
-        results.erase(results.begin(), results.begin() + cres);
-        if (results.empty()) {
-            _event.events = EPOLLIN | EPOLLRDHUP | EPOLLERR;
-        }
-    } catch (std::runtime_error &ex) {
-        _logger->error("Failed to writing to connection on descriptor {}: {} \n", _socket, ex.what());
-        alive = false;
+    struct iovec *vecs = new struct iovec[results.size()];
+    size_t i = 0;
+    for (auto result : results) {
+        vecs[i].iov_len = result.size();
+        vecs[i].iov_base = &(result[0]);
+        i++;
     }
+    vecs[0].iov_base = (char *)(vecs[0].iov_base) + offset;
+    vecs[0].iov_len -= offset;
+    int done;
+    if ((done = writev(_socket, vecs, results.size())) <= 0) {
+        _logger->error("Failed to send response");
+    }
+    offset += done;
+    i = 0;
+    for (; i < results.size() && (offset >= vecs[i].iov_len); i++) {
+        offset -= vecs[i].iov_len;
+    }
+    results.erase(results.begin(), results.begin() + i);
+    if (results.empty()) {
+        _event.events = EPOLLIN;
+    }
+    delete[] vecs;
 }
 
 } // namespace STnonblock
