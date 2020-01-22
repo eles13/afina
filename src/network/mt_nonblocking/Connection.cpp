@@ -135,9 +135,9 @@ void Connection::DoWrite() {
               _logger->error("Failed to send response");
               throw std::runtime_error(std::string(strerror(errno)));
             }
-        }
-        if (done <= 0){
-          return;
+            else{
+              return;
+            }
         }
         offset += done;
         result_it = results.begin();
