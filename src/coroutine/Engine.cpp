@@ -51,7 +51,7 @@ namespace Coroutine {
           toyield = toyield->next;
       }
 
-      if (toyield && toyield != cur_routine) {
+      if (toyield) {
           Enter(*toyield);
       }
   }
