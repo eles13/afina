@@ -28,7 +28,7 @@ namespace Network {
 namespace MTblocking {
 
 // See Server.h
-ServerImpl::ServerImpl(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Logging::Service> pl) : Server(ps, pl) {}
+ServerImpl::ServerImpl(std::shared_ptr<Afina::Storage> ps, std::shared_ptr<Logging::Service> pl) : Server(ps, pl), executor("", 10, 1, 10, 10, 10) {}
 
 // See Server.h
 ServerImpl::~ServerImpl() {}
@@ -37,7 +37,7 @@ ServerImpl::~ServerImpl() {}
 void ServerImpl::Start(uint16_t port, uint32_t n_accept, uint32_t n_workers) {
     _logger = pLogging->select("network");
     _logger->info("Start mt_blocking network service");
-
+    executor.Start();
     sigset_t sig_mask;
     sigemptyset(&sig_mask);
     sigaddset(&sig_mask, SIGPIPE);
@@ -83,6 +83,7 @@ void ServerImpl::Stop() {
     std::lock_guard<std::mutex> lock(mutex);
     for (auto &sock: stmap)
       shutdown(sock.first, SHUT_RD);
+    std::cout<<"stopped\n";
 }
 
 // See Server.h
@@ -94,6 +95,9 @@ void ServerImpl::Join() {
     while(!stmap.empty() && running.load())
       cv.wait(lock);
   }
+  executor.Stop(true);
+  assert(_thread.joinable());
+  _thread.join();
 }
 
 // See Server.h
@@ -138,17 +142,9 @@ void ServerImpl::OnRun() {
             tv.tv_usec = 0;
             setsockopt(client_socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&tv, sizeof tv);
         }
-
-        // TODO: Start new thread and process data from/to connection
-        {
-            std::lock_guard<std::mutex> lock(mutex);
-            if (running.load() &&  stmap.size() < _max_threads) {
-              stmap.emplace(client_socket, std::thread(&ServerImpl::Handler, this, client_socket));
-            } else {
-                close(client_socket);
-            }
-
-        }
+        if (!executor.Execute(&ServerImpl::Handler, this, client_socket))
+          close(client_socket);
+      }
     close(_server_socket);
     // Cleanup on exit...
     _logger->warn("Network stopped");
@@ -242,8 +238,10 @@ void ServerImpl::Handler(int client_socket)
   it->second.detach();
   stmap.erase(it);
   close(client_socket);
-  if ((stmap.size() == 0) && !running.load())
+  if ((stmap.size() == 0) && !running.load()){
       cv.notify_all();
+  }
+
 }
 
 
