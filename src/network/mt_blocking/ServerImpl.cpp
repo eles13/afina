@@ -88,6 +88,8 @@ void ServerImpl::Stop() {
 
 // See Server.h
 void ServerImpl::Join() {
+  assert(_thread.joinable());
+  _thread.join();
   {
     std::unique_lock<std::mutex> lock(mutex);
     while(!stmap.empty() && running.load())
@@ -143,8 +145,7 @@ void ServerImpl::OnRun() {
         if (!executor.Execute(&ServerImpl::Handler, this, client_socket))
           close(client_socket);
       }
-
-
+    close(_server_socket);
     // Cleanup on exit...
     _logger->warn("Network stopped");
 }
@@ -232,13 +233,6 @@ void ServerImpl::Handler(int client_socket)
       _logger->error("Failed to process connection on descriptor {}: {}", client_socket, ex.what());
   }
 
-  // We are done with this connection
-  close(client_socket);
-
-  // Prepare for the next command: just in case if connection was closed in the middle of executing something
-  command_to_execute.reset();
-  argument_for_command.resize(0);
-  parser.Reset();
   std::lock_guard<std::mutex> lock(mutex);
   auto it = stmap.find(client_socket);
   it->second.detach();
@@ -247,6 +241,7 @@ void ServerImpl::Handler(int client_socket)
   if ((stmap.size() == 0) && !running.load()){
       cv.notify_all();
   }
+
 }
 
 
